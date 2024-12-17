@@ -1,0 +1,73 @@
+---
+title: "P2 Data Cleaning"
+author: "Katherine Katsoudas"
+date: "2024-04-02"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+```
+
+
+## Create Cleaned Master Dataset
+
+### Load data
+```{r}
+game_level <- read.csv("gamelvl_joined.csv")
+team_level <- read.csv("teamlvl_joined.csv")
+
+#note these two datasets have the same information, just organized differently
+names(game_level)
+names(team_level)
+```
+
+### Calculate Total Shooting Percentage
+```{r}
+#GAME LEVEL
+game_level2 <- game_level %>%
+  mutate(
+    home_total_shots = home_fieldgoal_attempts + home_freethrow_attempts,
+    away_total_shots = away_fieldgoal_attempts + away_freethrow_attempts,
+    home_total_shots_made = home_fieldgoal_made + home_freethrow_made,
+    away_total_shots_made = away_fieldgoal_made + away_freethrow_made,
+    home_total_shooting_pct = home_total_shots_made/home_total_shots,
+    away_total_shooting_pct = away_total_shots_made/away_total_shots
+)
+#TEAM LEVEL
+team_level2 <- team_level %>%
+  mutate(
+    total_shots = fieldgoal_attempts + freethrow_attempts,
+    total_shots_made = fieldgoal_made + freethrow_made,
+    total_shooting_pct = total_shots_made/total_shots
+  )
+```
+
+### Calculate Turnover Rate
+```{r}
+# Basic Possession Formula=0.96*[(Field Goal Attempts)+(Turnovers)+0.44*(Free Throw Attempts)-(Offensive Rebounds)]
+#   poss <- 0.96*(fieldgoal_attempts + turnovers + 0.44*(freethrow_attempts-off_reb))
+
+#Turnover Ratio Formula=(Turnovers)*100)/ [(Field Goal Attempts)+(Free Throw Attempts*0.44)+(Assists)+(Turnovers)]
+#   turnover_pct <- turnovers*100 / (fieldgoal_attempts + (freethrow_attempts*0.44) + assists + turnovers)
+
+#GAME LEVEL 
+game_level3 <- game_level2 %>%
+  mutate(
+    home_poss = 0.96*(home_fieldgoal_attempts + home_turnovers + 0.44*(home_freethrow_attempts-home_off_reb)),
+    away_poss = 0.96*(away_fieldgoal_attempts + away_turnovers + 0.44*(away_freethrow_attempts-away_off_reb)),
+    home_turnover_pct = home_turnovers*100 / (home_fieldgoal_attempts + (home_freethrow_attempts*0.44) + home_assists + home_turnovers),
+    away_turnover_pct = away_turnovers*100 / (away_fieldgoal_attempts + (away_freethrow_attempts*0.44) + away_assists + away_turnovers)
+  )
+
+#TEAM LEVEL
+team_level3 <- team_level2 %>%
+  mutate(
+    poss = 0.96*(fieldgoal_attempts + turnovers + 0.44*(freethrow_attempts-off_reb)),
+    turnover_pct = turnovers*100 / (fieldgoal_attempts + (freethrow_attempts*0.44) + assists + turnovers)
+  )
+```
+
+

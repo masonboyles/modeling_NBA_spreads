@@ -1,0 +1,623 @@
+---
+title: "DataAnalysis"
+author: "Mason Boyles"
+date: "2024-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(rvest)
+library(dplyr)
+
+
+make_table <- function(link, year) {
+  page = read_html(link)
+  date = as.numeric(page%>%html_nodes("td:nth-child(1)") %>% html_text())
+  name = page %>% html_nodes("td:nth-child(4)") %>% html_text()
+  vh = page %>% html_nodes("td:nth-child(3)") %>% html_text()
+  ml = page %>% html_nodes("td:nth-child(12)") %>% html_text()
+  table = data.frame(date, name, vh, ml, stringsAsFactors = FALSE)[-1,]
+  table$year = ifelse(table$date <999, year+1, year)
+  return (table)
+}
+
+links = c( "https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2017-18/", "https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2018-19/", "https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2019-20/", "https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2020-21/", "https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2021-22/","https://www.sportsbookreviewsonline.com/scoresoddsarchives/nba-odds-2022-23/"
+          )
+year = 2017
+betting <- data.frame()
+for (link in links){
+  betting <- rbind(betting, make_table(link, year))
+  year=year+1}
+
+betting <- subset(betting, vh == "H")[c(1,2,4,5)]
+betting$date <- as.character(betting$date)
+betting$year <- as.character(betting$year)
+
+# Add leading zeros to the "date" column if necessary
+betting$date <- ifelse(nchar(betting$date) == 1, paste0("0", betting$date), betting$date)
+
+# Combine "date" and "year" columns into "GAME_DATE_EST" column
+betting$date <- paste0(betting$year, "-", 
+                            ifelse(nchar(betting$date) == 3, 
+                                   paste0("0", substr(betting$date, 1, 1)), 
+                                   substr(betting$date, 1, 2)), "-", 
+                            substr(betting$date, nchar(betting$date) - 1, nchar(betting$date)))
+# Remove the original "date" and "year" columns if needed
+#betting <- betting[, !names(df) %in% c("date", "year")]
+#betting <- betting[c(2,3,5)]
+
+team_mapping <- c("LALakers" = "LAL",
+                  "Boston" = "BOS",
+                  "GoldenState" = "GSW",
+                  "Miami" = "MIA",
+                  "SanAntonio" ="SAS",
+                  "Brooklyn" = "BKN",
+                  "Memphis" = "MEM",
+                  "Detroit" = "DET",
+                  "Toronto" = "TOR",
+                  "Indiana" = "IND",
+                  "Atlanta" = "ATL",
+                  "Minnesota" = "MIN",
+                  "NewYork" = "NYK",
+                  "Washington" = "WAS",
+                  "Phoenix" = "PHX",
+                  "Utah" = "UTA",
+                  "Sacramento" = "SAC",
+                  "Philadelphia" = "PHI",
+                  "Charlotte" = "CHA",
+                  "Houston" = "HOU",
+                  "Portland" = "POR",
+                  "Orlando" = "ORL",
+                  "Chicago" = "CHI",
+                  "Milwaukee" = "MIL",
+                  "Dallas" = "DAL",
+                  "Denver" = "DEN",
+                  "NewOrleans" = "NOP",
+                  "Cleveland" = "CLE",
+                  "OklahomaCity" = "OKC",
+                  "LAClippers" = "LAC")
+betting$home_name <- team_mapping[betting$name]
+
+betting <- betting[,c(1,3,5)]
+betting
+```
+
+
+```{r}
+
+#ENGINEERED VARIABLES
+
+library(dplyr)
+all_data <- read.csv("gamelvl_joined.csv")
+team_lvl <- read.csv("teamlvl_joined.csv")
+
+
+# creating new metrics
+all_data$spread <- all_data$home_points-all_data$away_points
+
+all_data$home_ftr <- all_data$home_freethrow_attempts / all_data$home_fieldgoal_attempts
+all_data$away_ftr <- all_data$away_freethrow_attempts / all_data$away_fieldgoal_attempts
+all_data$home_pace <- (all_data$home_fieldgoal_attempts + .44*all_data$home_freethrow_attempts - all_data$home_off_reb+ all_data$home_turnovers) / 48 #Possessions per minute
+all_data$away_pace <- (all_data$away_fieldgoal_attempts + .44*all_data$away_freethrow_attempts - all_data$away_off_reb+ all_data$away_turnovers) / 48
+all_data$home_turnover_rate <- all_data$home_turnovers/(all_data$home_fieldgoal_attempts + .44*all_data$home_freethrow_attempts - all_data$home_off_reb+ all_data$home_turnovers)
+all_data$away_turnover_rate <- all_data$away_turnovers/(all_data$away_fieldgoal_attempts + .44*all_data$away_freethrow_attempts - all_data$away_off_reb+ all_data$away_turnovers)
+all_data$home_atr <- all_data$home_assists / all_data$home_turnovers
+all_data$away_atr <- all_data$away_assists / all_data$away_turnovers
+
+
+
+file_path <- "/Users/masonboyles/Desktop/dates.csv"  # Provide the desired file path and name
+names(all_data)
+colnames(all_data) <- tolower(colnames(all_data))
+# Save the dataframe as a CSV file
+#write.csv(all_data, file = file_path, row.names = FALSE)
+current_directory <- getwd()
+# Print the file path
+#print(current_directory)
+```
+
+```{r}
+
+library(nbastatR)
+
+dates <- subset(game_logs(seasons = 2018:2024, result_types = c("team")), locationGame == "H")[,c(5,6)]
+file_path <- "/Users/masonboyles/Desktop/dates.csv"
+write.csv(dates, file = file_path, row.names = FALSE)
+
+names(dates)[names(dates) == "idGame"] <- "game_id"
+names(dates)[names(dates) == "idGame"] <- "game_id"
+names(dates)[names(dates) == "dateGame"] <- "date"
+betting$date <- as.Date(betting$date)
+all_data_with_dates <- merge(all_data, dates, by="game_id")
+#all_data <- merge(all_data_with_dates, betting, by=c("date", "home_name"))
+all_data_with_dates
+```
+
+
+
+
+```{r}
+averages_table <- function(link, year){
+  table = read.csv(link)
+  table$year = year
+  return (table)
+}
+
+all_data <- all_data %>% mutate(game_matchup = paste(away_name, "@", home_name))
+all_data <- all_data[, c("game_matchup", setdiff(names(all_data), "game_matchup"))]
+
+sets <- c("cleaned_averages_2018.csv",
+          "cleaned_averages_2019.csv",
+          "cleaned_averages_2020.csv",
+          "cleaned_averages_2021.csv",
+          "cleaned_averages_2022.csv",
+          "cleaned_averages_2023.csv",
+          "cleaned_averages_2024.csv")
+full_averages_table <- data.frame()
+year = 2018
+for (link in sets){
+  full_averages_table <- rbind(full_averages_table, averages_table(link, year))
+  year=year+1
+}
+all_data
+```
+
+```{r}
+all_data_spreads <- all_data[,c(1,3,7,48,86)]
+all_data_spreads <- merge(all_data_spreads, full_averages_table, by=c("game_matchup", "year"))
+all_data_spreads$ml = as.numeric(all_data_spreads$ml)
+```
+
+
+```{r}
+library(readr)
+library(leaps)
+source("ShowSubsets.R")
+library(MASS)
+
+full <- lm(spread~home_ftr+away_ftr+home_pace+away_pace+home_turnover_rate+away_turnover_rate+home_atr+ away_atr+home_freethrow_percent+away_freethrow_percent+home_off_reb+home_def_reb+away_off_reb+away_def_reb +home_raptor_offensive+home_raptor_defensive+away_raptor_defensive+away_raptor_offensive+home_total_reb+ away_total_reb+home_fieldgoal_percent+away_fieldgoal_percent+away_fieldgoal3_attempts+ home_fieldgoal3_attempts+home_fieldgoal3_percent+away_fieldgoal3_percent, data=all_data_spreads)
+
+none <- lm(spread~1, data=all_data_spreads)
+MSE=(summary(full)$sigma)^2
+stepwise_model <- stepAIC(none, scope=list(lower=none, upper=full),direction = "forward")
+
+# Print the final model summary
+summary(stepwise_model)
+
+#step(none,scope=list(upper=full),scale=MSE)
+```
+
+
+
+
+```{r}
+library(ridge)
+library(randomForest)
+library(rpart)
+
+all_data_shuffled <- all_data[sample(nrow(all_data)), ]
+
+# Splitting data into train and test
+train_data <- all_data_shuffled[1:round(0.8 * nrow(all_data_shuffled)), ]
+test_data <- all_data_shuffled[(round(0.8 * nrow(all_data_shuffled)) + 1):nrow(all_data_shuffled), ]
+
+# Multiple different models
+mod_simple <- lm(spread~home_ftr+home_freethrow_attempts+home_off_reb+home_turnovers+away_ftr+away_freethrow_attempts+away_off_reb+away_turnovers, data=train_data)
+mod_stepwise <- lm(formula = spread~home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive  + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_ridge <- linearRidge(spread ~ home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive  + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_rf <- randomForest(formula = spread ~ home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive  + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_dec_trees <- rpart(formula = spread ~ home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive  + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_poisson_home <- glm(formula = home_points ~ home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive + home_isb2b + away_isb2b + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, 
+                     family = poisson(link = "log"), 
+                     data = train_data)
+mod_poisson_away <- glm(formula = away_points ~ home_raptor_offensive + home_raptor_defensive + 
+    away_raptor_defensive + home_isb2b + away_isb2b + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    home_off_reb + away_fieldgoal3_attempts + away_atr + home_fieldgoal3_attempts + 
+    home_turnover_rate + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, 
+                     family = poisson(link = "log"), 
+                     data = train_data)
+
+# Creating predictions
+predictions <- predict(mod_simple, newdata = test_data)
+predictions_stepwise <- predict(mod_stepwise, newdata= test_data)
+predictions_ridge <- predict(mod_ridge, newdata = test_data)
+predictions_rf <- predict(mod_rf, newdata = test_data)
+predictions_dec_trees <- predict(mod_dec_trees, newdata = test_data)
+predictions_poisson <- predict(mod_poisson_home, newdata = test_data)-predict(mod_poisson_away, newdata = test_data)
+
+# Calculating RMSE and MAD
+mae1 <- mean(abs(predictions - test_data$spread))
+mae2 <- mean(abs(predictions_stepwise - test_data$spread))
+mae3 <- mean(abs(predictions_ridge - test_data$spread))
+mae4 <- mean(abs(predictions_rf - test_data$spread))
+mae5 <- mean(abs(predictions_dec_trees - test_data$spread))
+mae6 <- mean(abs(predictions_poisson - test_data$spread))
+
+print(mae1)
+print(mae2)
+print(mae3)
+print(mae4)
+print(mae5)
+print(mae6)
+```
+
+```{r, warning=FALSE}
+library(ridge)
+library(randomForest)
+library(rpart)
+
+all_data_shuffled <- all_data_spreads[sample(nrow(all_data_spreads)), ]
+
+# Splitting data into train and test
+train_data <- all_data_shuffled[1:round(0.8 * nrow(all_data_shuffled)), ]
+test_data <- all_data_shuffled[(round(0.8 * nrow(all_data_shuffled)) + 1):nrow(all_data_shuffled), ]
+
+# Multiple different models
+mod_simple <- lm(spread~home_ftr+home_freethrow_attempts+home_off_reb+home_turnover_rate+away_ftr+away_freethrow_attempts+away_off_reb+away_turnover_rate, data=train_data)
+
+mod_stepwise <- lm(formula = spread~home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_ridge <- linearRidge(spread ~home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_rf <- randomForest(formula = spread ~ home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data, ntree=1000)
+
+mod_dec_trees <- rpart(formula = spread ~ home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = train_data)
+
+mod_poisson_home <- glm(formula = home_points ~home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, 
+                     family = poisson(link = "log"), 
+                     data = train_data)
+mod_poisson_away <- glm(formula = away_points ~ home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, 
+                     family = poisson(link = "log"), 
+                     data = train_data)
+
+# Creating predictions
+predictions <- predict(mod_simple, newdata = test_data)
+predictions_stepwise <- predict(mod_stepwise, newdata= test_data)
+predictions_ridge <- predict(mod_ridge, newdata = test_data)
+predictions_rf <- predict(mod_rf, newdata = test_data)
+predictions_dec_trees <- predict(mod_dec_trees, newdata = test_data)
+predictions_poisson <- predict(mod_poisson_home, newdata = test_data)-predict(mod_poisson_away, newdata = test_data)
+
+# Calculating RMSE and MAD
+mae1 <- mean(abs(predictions - test_data$spread))
+mae2 <- mean(abs(predictions_stepwise - test_data$spread))
+mae3 <- mean(abs(predictions_ridge - test_data$spread))
+mae4 <- mean(abs(predictions_rf - test_data$spread))
+mae5 <- mean(abs(predictions_dec_trees - test_data$spread))
+mae6 <- mean(abs(predictions_poisson - test_data$spread))
+
+print(mae1)
+print(mae2)
+print(mae3)
+print(mae4)
+print(mae5)
+print(mae6)
+```
+
+```{r}
+ntree_range <- seq(100,1000, by=100)
+oob_errors <- numeric(length(ntree_range))
+
+for (i in seq_along(ntree_range)) {
+  model <- randomForest(formula = spread ~ home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = all_data_spreads, ntree= i)
+  oob_errors[i] <- cross_validate(model, model, FALSE)[1]
+}
+
+plot(ntree_range, oob_errors, type ="b", xlab = "Number of Trees", ylab = "MAE")
+```
+
+
+```{r}
+averages_2023 <- subset(all_data_spreads, year == 2023)
+
+
+predictions_teams_2023_stepwise <- predict(mod_stepwise, newdata=averages_2023)
+averages_2023$predicted_spread_stepwise <- predictions_teams_2023_stepwise
+predictions_teams_2023_ridge <- predict(mod_ridge, newdata=averages_2023)
+averages_2023$predicted_spread_ridge <- predictions_teams_2023_ridge
+predictions_teams_2023_rf <- predict(mod_rf, newdata=averages_2023)
+averages_2023$predicted_spread_rf <- predictions_teams_2023_rf
+predictions_teams_2023_dec_trees <- predict(mod_dec_trees, newdata=averages_2023)
+averages_2023$predicted_spread_dec_trees <- predictions_teams_2023_dec_trees
+predictions_teams_2023_poisson <- predict(mod_poisson_home, newdata=averages_2023) - predict(mod_poisson_away, newdata=averages_2023)
+averages_2023$predicted_spread_poisson <- predictions_teams_2023_poisson
+
+
+all_data_2023 <- subset(all_data, year == 2023)
+
+predictions_2023 = averages_2023[,c(1,88,89,90,91,92)]
+all_data_2023 <- merge(all_data_2023, predictions_2023, by="game_matchup")
+
+
+all_data_2023$absolute_error_stepwise <- abs(all_data_2023$spread - all_data_2023$predicted_spread_stepwise)
+all_data_2023$absolute_error_ridge <- abs(all_data_2023$spread - all_data_2023$predicted_spread_ridge)
+all_data_2023$absolute_error_rf <- abs(all_data_2023$spread - all_data_2023$predicted_spread_rf)
+all_data_2023$absolute_error_dec_trees <- abs(all_data_2023$spread - all_data_2023$predicted_spread_dec_trees)
+all_data_2023$absolute_error_poisson <- abs(all_data_2023$spread - all_data_2023$predicted_spread_poisson)
+
+
+
+
+print(mean(all_data_2023$absolute_error_stepwise))
+print(mean(all_data_2023$absolute_error_ridge))
+print(mean(all_data_2023$absolute_error_rf))
+print(mean(all_data_2023$absolute_error_dec_trees))
+print(mean(all_data_2023$absolute_error_poisson))
+```
+
+```{r}
+mod_rf <- randomForest(formula = spread ~ home_raptor_offensive + away_raptor_offensive + 
+    home_raptor_defensive + away_raptor_defensive + away_fieldgoal3_percent + 
+    away_def_reb + home_total_reb + home_fieldgoal_percent + 
+    away_turnover_rate + away_fieldgoal_percent + home_fieldgoal3_percent + 
+    away_fieldgoal3_attempts + away_atr + home_off_reb + home_turnover_rate + 
+    home_fieldgoal3_attempts + away_off_reb + away_pace + home_ftr + 
+    home_freethrow_percent + home_pace + away_ftr + away_freethrow_percent, data = all_data_spreads, ntree= 1000)
+cross_validate(mod_rf,mod_rf,FALSE)
+```
+
+
+```{r}
+# Set a seed for reproducibility
+cross_validate <- function(mod,mod2,p){
+
+  # For regression
+  cv_metrics <- data.frame(MAE = numeric(10), RMSE = numeric(10), R2 = numeric(10))
+  
+  # Create the empty column for predictions
+  all_data_spreads$predictions <- NA
+  
+  # Create a 'fold' column that assigns a random integer between 1 and 10 to each observation
+  all_data_spreads$fold <- sample(1:10, nrow(all_data_spreads), replace = TRUE)
+  
+  # Perform the 10-Fold Cross Validation through a loop
+  for (i in 1:10){
+    # Fit the model to the data set where the fold doesn't equal i (training set)
+    training_set <- all_data_spreads[all_data_spreads$fold != i, ]
+    # Predict  using the model for the data where the fold equals i (testing set)
+    testing_set <- all_data_spreads[all_data_spreads$fold == i, ]
+    # Fit model to the training set
+    cv_model <- mod
+  
+    # For regression outcomes
+    if (p==TRUE){
+      predictions <- predict(cv_model, newdata = testing_set)-predict(mod2,testing_set)
+    } else{
+    predictions <- predict(cv_model, newdata = testing_set)}
+    
+    # Calculate metrics
+    cv_metrics$MAE[i] <- mean(abs(predictions - testing_set$spread))
+    cv_metrics$RMSE[i] <- sqrt(mean((predictions - testing_set$spread)^2))
+    cv_metrics$R2[i] <- cor(predictions, testing_set$spread)^2
+  }
+  
+  # Calculate average performance
+  mean_metrics <- colMeans(cv_metrics)
+  return (mean_metrics)
+}
+cv_results <- data.frame("MAE","RMSE", "R2")
+cv_results<- rbind(cv_results, cross_validate(mod_simple, mod_simple, FALSE))
+cv_results<- rbind(cv_results,cross_validate(mod_stepwise,mod_stepwise, FALSE))
+cv_results<- rbind(cv_results,cross_validate(mod_ridge, mod_ridge,FALSE))
+cv_results<- rbind(cv_results,cross_validate(mod_rf, mod_rf, FALSE))
+cv_results<- rbind(cv_results,cross_validate(mod_dec_trees, mod_dec_trees, FALSE))
+cv_results<- rbind(cv_results,cross_validate(mod_poisson_home,mod_poisson_away, TRUE))[-1,]
+model_names <- c("simple", "stepwise", "ridge", "random forest", "decision trees", "poisson")
+
+# Add a column named "model" with the model names to the beginning of the data frame
+cv_results <- data.frame(model = model_names, cv_results)
+names(cv_results) <- sub("^X\\.", "", names(cv_results))
+names(cv_results) <- sub("\\.", "", names(cv_results))
+cv_results
+```
+
+
+
+```{r}
+averages_2022 <- subset(all_data_spreads, year == 2022)
+
+predictions_teams_2022_stepwise <- predict(mod_stepwise, newdata=averages_2022)
+averages_2022$predicted_spread_stepwise <- predictions_teams_2022_stepwise
+predictions_teams_2022_ridge <- predict(mod_ridge, newdata=averages_2022)
+averages_2022$predicted_spread_ridge <- predictions_teams_2022_ridge
+predictions_teams_2022_rf <- predict(mod_rf, newdata=averages_2022)
+averages_2022$predicted_spread_rf <- predictions_teams_2022_rf
+predictions_teams_2022_dec_trees <- predict(mod_dec_trees, newdata=averages_2022)
+averages_2022$predicted_spread_dec_trees <- predictions_teams_2022_dec_trees
+predictions_teams_2022_poisson <- predict(mod_poisson_home, newdata=averages_2022) - predict(mod_poisson_away, newdata=averages_2022)
+averages_2022$predicted_spread_poisson <- predictions_teams_2022_poisson
+
+
+all_data_2022 <- subset(all_data, year == 2022)
+predictions_2022 = averages_2022[,c(1,88,89,90,91,92)]
+all_data_2022 <- merge(all_data_2022, predictions_2022, by="game_matchup")
+
+
+all_data_2022$absolute_error_stepwise <- abs(all_data_2022$spread - all_data_2022$predicted_spread_stepwise)
+all_data_2022$absolute_error_ridge <- abs(all_data_2022$spread - all_data_2022$predicted_spread_ridge)
+all_data_2022$absolute_error_rf <- abs(all_data_2022$spread - all_data_2022$predicted_spread_rf)
+all_data_2022$absolute_error_dec_trees <- abs(all_data_2022$spread - all_data_2022$predicted_spread_dec_trees)
+all_data_2022$absolute_error_poisson <- abs(all_data_2022$spread - all_data_2022$predicted_spread_poisson)
+
+
+
+
+print(mean(all_data_2022$absolute_error_stepwise))
+print(mean(all_data_2022$absolute_error_ridge))
+print(mean(all_data_2022$absolute_error_rf))
+print(mean(all_data_2022$absolute_error_dec_trees))
+print(mean(all_data_2022$absolute_error_poisson))
+```
+
+```{r}
+averages_2024 <- subset(all_data_spreads, year == 2024)
+
+predictions_teams_2024_stepwise <- predict(mod_stepwise, newdata=averages_2024)
+averages_2024$predicted_spread_stepwise <- predictions_teams_2024_stepwise
+predictions_teams_2024_ridge <- predict(mod_ridge, newdata=averages_2024)
+averages_2024$predicted_spread_ridge <- predictions_teams_2024_ridge
+predictions_teams_2024_rf <- predict(mod_rf, newdata=averages_2024)
+averages_2024$predicted_spread_rf <- predictions_teams_2024_rf
+predictions_teams_2024_dec_trees <- predict(mod_dec_trees, newdata=averages_2024)
+averages_2024$predicted_spread_dec_trees <- predictions_teams_2024_dec_trees
+predictions_teams_2024_poisson <- predict(mod_poisson_home, newdata=averages_2024) - predict(mod_poisson_away, newdata=averages_2024)
+averages_2024$predicted_spread_poisson <- predictions_teams_2024_poisson
+
+
+all_data_2024 <- subset(all_data, year == 2024)
+predictions_2024 = averages_2024[,c(1,88,89,90,91,92)]
+all_data_2024 <- merge(all_data_2024, predictions_2024, by="game_matchup")
+
+
+all_data_2024$absolute_error_stepwise <- abs(all_data_2024$spread - all_data_2024$predicted_spread_stepwise)
+all_data_2024$absolute_error_ridge <- abs(all_data_2024$spread - all_data_2024$predicted_spread_ridge)
+all_data_2024$absolute_error_rf <- abs(all_data_2024$spread - all_data_2024$predicted_spread_rf)
+all_data_2024$absolute_error_dec_trees <- abs(all_data_2024$spread - all_data_2024$predicted_spread_dec_trees)
+all_data_2024$absolute_error_poisson <- abs(all_data_2024$spread - all_data_2024$predicted_spread_poisson)
+
+
+
+
+print(mean(all_data_2024$absolute_error_stepwise))
+print(mean(all_data_2024$absolute_error_ridge))
+print(mean(all_data_2024$absolute_error_rf))
+print(mean(all_data_2024$absolute_error_dec_trees))
+print(mean(all_data_2024$absolute_error_poisson))
+```
+
+
+CREATING PREDICTIONS FOR SPREAD
+
+```{r}
+predictions_final <- read_csv("Predictions.csv")
+
+team_mapping2 <- c("Los Angeles Lakers" = "LAL",
+                  "Boston Celtics" = "BOS",
+                  "Golden State Warriors" = "GSW",
+                  "Miami Heat" = "MIA",
+                  "San Antonio Spurs" ="SAS",
+                  "Brooklyn Nets" = "BKN",
+                  "Memphis Grizzlies" = "MEM",
+                  "Detroit Pistons" = "DET",
+                  "Toronto Raptors" = "TOR",
+                  "Indiana Pacers" = "IND",
+                  "Atlanta Hawks" = "ATL",
+                  "Minnesota Timberwolves" = "MIN",
+                  "New York Knicks" = "NYK",
+                  "Washington Wizards" = "WAS",
+                  "Phoenix Suns" = "PHX",
+                  "Utah Jazz" = "UTA",
+                  "Sacramento Kings" = "SAC",
+                  "Philadelphia 76ers" = "PHI",
+                  "Charlotte Hornets" = "CHA",
+                  "Houston Rockets" = "HOU",
+                  "Portland Trail Blazers" = "POR",
+                  "Orlando Magic" = "ORL",
+                  "Chicago Bulls" = "CHI",
+                  "Milwaukee Bucks" = "MIL",
+                  "Dallas Mavericks" = "DAL",
+                  "Denver Nuggets" = "DEN",
+                  "New Orleans Pelicans" = "NOP",
+                  "Cleveland Cavaliers" = "CLE",
+                  "Oklahoma City Thunder" = "OKC",
+                  "Los Angeles Clippers" = "LAC")
+
+predictions_final$home_name <- team_mapping2[predictions_final$Home]
+predictions_final$away_name <- team_mapping2[predictions_final$Away]
+predictions_final <- predictions_final %>% mutate(game_matchup = paste(away_name, "@", home_name))
+predictions_final <- predictions_final[, c("game_matchup", setdiff(names(predictions_final), "game_matchup"))]
+averages_2024 <- read_csv("cleaned_averages_2024.csv")
+predictions_final <- merge(predictions_final, averages_2024, by ="game_matchup")
+SPREAD_PREDICTIONS <- predict(mod_rf, newdata=predictions_final)
+done <-data.frame(predictions_final$game_matchup,SPREAD_PREDICTIONS)
+done
+write.csv(done, file = file_path, row.names = FALSE)
+```
+
+
+
+
+
